@@ -23,17 +23,6 @@
 // ESP32 WiFi Sniffer based on https://lang-ship.com/blog/work/esp32-wifi-sniffer/
 
 
-/*
-v 端末ID(mac)
-v ntpエラー表示
-v ntp設定(wifi.txt)
-v csv 
-v 計測停止開始スイッチ
-v 計測中表示
-v 連番log
-v logファイル名MACアドレス
-*/
-
 // UI
 // 起動時BTN: NTP
 // 起動時: SDなし（赤高速点滅）／NTPエラー（紫高速点滅）→BTNでNTP（緑点滅）／wifi.txtなし（紫点滅）
@@ -42,7 +31,9 @@ v logファイル名MACアドレス
 
 char ssid[64];
 char ssid_pwd[64];
-bool fOperation = true;
+char ssid_pwd2[64];
+bool fOperation = true; // logging at boot
+//bool fOperation = false; // no logging at boot
 #define NTP_TIMEZONE  "JST-9"
 
 #define PIN_BUTTON 0  // 本体ボタンの使用端子（G0）
@@ -111,11 +102,16 @@ esp_err_t event_handler(void *ctx, system_event_t *event)
   return ESP_OK;
 }
 
+uint8_t f = 0;
+
 void wifi_sniffer_init(void)
 {
   nvs_flash_init();
   tcpip_adapter_init();
-  ESP_ERROR_CHECK(esp_event_loop_init(event_handler, NULL));
+  if (f == 0){
+    ESP_ERROR_CHECK(esp_event_loop_init(event_handler, NULL));
+    f = 1;
+  }
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
   ESP_ERROR_CHECK(esp_wifi_set_country(&wifi_country)); /* set country for channel range [1, 13] */
@@ -267,7 +263,8 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   logFile.printf("\n");
   logFile.close();
 #endif
-  leds[0] = CRGB(0, 0, 40); FastLED.show();
+  if (fOperation == true) leds[0] = CRGB(0, 0, 40); else leds[0] = CRGB(0, 0, 0);
+  FastLED.show();
 }
 
 void NTPadjust()
@@ -279,23 +276,36 @@ void NTPadjust()
   logFile = SD.open("/wifi.txt", "r");
 
   uint8_t p = 0, tp = 0;
-  while(logFile.available() && tp < 2) {
+  ssid_pwd2[0] = '\0';
+  while(logFile.available() && tp < 3) {
     char c = (char)logFile.read();
     if (c == 0x0d || c == 0x0a){
       if (tp == 0) ssid[p] = '\0';
-      else ssid_pwd[p] = '\0';
+      else if (tp == 1) ssid_pwd[p] = '\0';
+      else ssid_pwd2[p] = '\0';
       tp++; p = 0;
     }
     if (c != 0x0d && c != 0x0a){
       if (tp == 0) ssid[p++] = c;
-      else ssid_pwd[p++] = c;
+      else if (tp == 1) ssid_pwd[p++] = c;
+      else ssid_pwd2[p++] = c;
     }
   }
-  printf("WiFi settings from wifi.txt: %s / %s\n", ssid, ssid_pwd);
+//  printf("WiFi settings from wifi.txt: %s / %s / %s\n", ssid, ssid_pwd, ssid_pwd2);
 
+  WiFi.disconnect(true);  //disconnect form wifi to set new wifi connection
   logFile.close();
-  WiFi.mode(WIFI_STA);
-  printf("Connecting to %s", ssid);
+
+  WiFi.mode(WIFI_STA); //init wifi mode
+  printf("Connecting to %s\n", ssid);
+  if (strlen(ssid_pwd2) > 0){
+    WiFi.begin(ssid, WPA2_AUTH_PEAP, "", ssid_pwd, ssid_pwd2);
+  }
+  else{
+    WiFi.begin(ssid, ssid_pwd);
+  }
+  WiFi.setSleep(false);
+
   WiFi.begin(ssid, ssid_pwd);
   uint8_t f = 0;
   while (WiFi.status() != WL_CONNECTED)
@@ -306,10 +316,9 @@ void NTPadjust()
     FastLED.show();
     f = 1 - f;
   }
-  leds[0] = CRGB(0, 0, 0); FastLED.show();
+  leds[0] = CRGB(0, 40, 0); FastLED.show();
 
-  printf("connected\n");
-  printf("%s\n", WiFi.localIP().toString().c_str());
+  printf("connected, IP=%s\n", WiFi.localIP().toString().c_str());
   configTzTime(NTP_TIMEZONE, "ntp.nict.jp");
 
 #if SNTP_ENABLED
@@ -330,10 +339,10 @@ void NTPadjust()
   while (t > time(nullptr));  /// Synchronization in seconds
   M5.Rtc.setDateTime( gmtime( &t ) );
   auto dt = M5.Rtc.getDateTime();
-  printf("date&time: %02d%02d%02d %02d%02d%02d ", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
+  printf("date&time: %02d%02d%02d %02d%02d%02d\n", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
 
   WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+//  WiFi.mode(WIFI_OFF);
 
   leds[0] = CRGB(0, 0, 0); FastLED.show();
 }
@@ -413,20 +422,29 @@ void setup()
 void loop()
 {
   M5.update();
-  if (M5.BtnA.wasPressed()){
+  if (M5.BtnA.wasDoubleClicked()){
+    if (fOperation == true){
+      fOperation = false;
+      //ESP_ERROR_CHECK(esp_wifi_stop());
+      //ESP_ERROR_CHECK(esp_wifi_set_promiscuous(false));
+    }
+    NTPadjust();
+    wifi_sniffer_init();
+  }
+  else if (M5.BtnA.wasSingleClicked()){
     if (fOperation == true){
       printf("stopped\n");
       fOperation = false;
-      ESP_ERROR_CHECK(esp_wifi_stop());
-      ESP_ERROR_CHECK(esp_wifi_set_promiscuous(false));
+      //ESP_ERROR_CHECK(esp_wifi_stop());
+      //ESP_ERROR_CHECK(esp_wifi_set_promiscuous(false));
       leds[0] = CRGB(0, 0, 0); FastLED.show();
     }
     else{
       fOperation = true;
       logNum++;
       printf("starting log %d\n", logNum);
-      ESP_ERROR_CHECK(esp_wifi_start());
-      ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
+      //ESP_ERROR_CHECK(esp_wifi_start());
+      //ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
     }
   }
   if (fOperation == true){
@@ -435,5 +453,4 @@ void loop()
     wifi_sniffer_set_channel(channel);
     channel = (channel % WIFI_CHANNEL_MAX) + 1;
   }
-
 }
