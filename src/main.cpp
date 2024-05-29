@@ -22,12 +22,18 @@
 
 // ESP32 WiFi Sniffer based on https://lang-ship.com/blog/work/esp32-wifi-sniffer/
 
-
 // UI
 // 起動時BTN: NTP
 // 起動時: SDなし（赤高速点滅）／NTPエラー（紫高速点滅）→BTNでNTP（緑点滅）／wifi.txtなし（紫点滅）
 // 起動後：BTN=記録ON/OFF
 // 記録ON時：青点灯（データ受信時=水色点滅）
+
+#define LED_SDERROR CRGB(80, 0, 0) // RED
+#define LED_NTPERROR CRGB(80, 0, 80) // PURPLE
+#define LED_NTP CRGB(0, 80, 0) // GREEN
+#define LED_LOGGING CRGB(0, 0, 80) // BLUE
+#define LED_RECEIVED CRGB(0, 80, 80) // CYAN
+#define LED_NONE CRGB(0, 0, 0) // BLACK
 
 char ssid[64];
 char ssid_pwd[64];
@@ -47,16 +53,21 @@ bool fSD = false;
 uint16_t logNum = 0;
 char logFileNamePrefix[32];
 
+void showLED(CRGB c){
+  leds[0] = c; FastLED.show();
+}
+
+
 void ShowAlert(CRGB c, uint16_t cycle)
 {
   while(1){
-    leds[0] = c; FastLED.show(); delay(cycle/2);
-    leds[0] = CRGB( 0, 0, 0); FastLED.show(); delay(cycle/2);
+    showLED(c); delay(cycle/2);
+    showLED(LED_NONE); delay(cycle/2);
   }    
 }
 
 
-// #define DEBUG // serial out, no SD write
+#define DEBUG // serial out, no SD write
 /*
 add followings to ~/.platformio/packages/framework-arduinoespressif32/variants/m5stack_stamp_s3/pins_arduino.h
 static const uint8_t SS = 7;
@@ -163,8 +174,11 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   // DATA follows IEEE802.11 header, buff[24]-
 
   auto dt = M5.Rtc.getDateTime();
-  if (fSD == true) printf("!\n");
-  leds[0] = CRGB(0, 40, 40); FastLED.show(); // Packet received = Cyan
+#ifdef DEBUG
+#else
+	printf("!\n");
+#endif
+	showLED(LED_RECEIVED); // Packet received = Cyan
 
 #ifdef DEBUG
   printf("%02d%02d%02d %02d%02d%02d ", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
@@ -229,7 +243,7 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   mbedtls_md_free(&ctx);
   for (uint8_t i = 0; i < 32; i++)
 #ifdef DEBUG
-    printf("%02x ", shaResult[i]);
+  printf("%02x ", shaResult[i]);
   printf("%02d ", ppkt->rx_ctrl.rssi);
   // MAC address
   printf("%02x:%02x:%02x:%02x:%02x:%02x ", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
@@ -238,6 +252,7 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
   logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
 #endif
+/*
   // skipped and raw data
   for (uint8_t i = 0; i < Nbuf; i++)
 #ifdef DEBUG
@@ -257,21 +272,21 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 #else 
     logFile.printf("%02x", ipkt->payload[i]);
 #endif
+*/
 #ifdef DEBUG
   printf("\n");
 #else
   logFile.printf("\n");
   logFile.close();
 #endif
-  if (fOperation == true) leds[0] = CRGB(0, 0, 40); else leds[0] = CRGB(0, 0, 0);
-  FastLED.show();
+  if (fOperation == true) showLED(LED_LOGGING); else showLED(LED_NONE);
 }
 
 void NTPadjust()
 {
   // using NTP
   // https://knt60345blog.com/m5stack-ntp/
-  if (!SD.exists("/wifi.txt")) ShowAlert(CRGB(40, 0, 40), 1000);
+  if (!SD.exists("/wifi.txt")) ShowAlert(LED_NTPERROR, 1000);
 
   logFile = SD.open("/wifi.txt", "r");
 
@@ -312,11 +327,10 @@ void NTPadjust()
   {
     delay(500);
     printf(".");
-    if (f == 1) leds[0] = CRGB(0, 40, 0); else leds[0] = CRGB(0, 0, 0); 
-    FastLED.show();
+    if (f == 1) showLED(LED_NTP); else showLED(LED_NONE);
     f = 1 - f;
   }
-  leds[0] = CRGB(0, 40, 0); FastLED.show();
+  showLED(LED_NONE);
 
   printf("connected, IP=%s\n", WiFi.localIP().toString().c_str());
   configTzTime(NTP_TIMEZONE, "ntp.nict.jp");
@@ -344,7 +358,7 @@ void NTPadjust()
   WiFi.disconnect(true);
 //  WiFi.mode(WIFI_OFF);
 
-  leds[0] = CRGB(0, 0, 0); FastLED.show();
+	showLED(LED_NONE);
 }
 
 void setup()
@@ -358,15 +372,16 @@ void setup()
   pinMode(PIN_BUTTON, INPUT);                             // 本体ボタン（入力）（INPUT_PULLUPでプルアップ指定）
   pinMode(PIN_OUTPUT, OUTPUT);                            // 外付けLED（出力）
 
-  leds[0] = CRGB(0, 0, 0); FastLED.show();
+	showLED(LED_NONE);
 
   // SD on M5Unified
   // https://lang-ship.com/blog/work/m5stack-m5unified-sd/
   // https://qiita.com/MuAuan/items/5fd75695a3c9ad198b1c
 
+
   SPI.begin(14, 39, 12);
   fSD = SD.begin(11, SPI, 25000000);
-  if (fSD == false) ShowAlert(CRGB(40, 0, 0), 200); // SD error = fast RED
+  if (fSD == false) ShowAlert(LED_SDERROR, 200); // SD error = fast RED
 
   bool fWrite_mac = true;
   uint8_t mac[6];
@@ -407,8 +422,8 @@ void setup()
   printf("year=%d\n", dt.date.year);
   printf("logFilenamePrefix=%s\n", logFileNamePrefix);
   while(dt.date.year < 2023){
-    leds[0] = CRGB(40, 0, 40); FastLED.show(); delay(100);
-    leds[0] = CRGB( 0, 0,  0); FastLED.show(); delay(100); // NTP error = fast PURPLE
+    showLED(LED_NTPERROR);delay(100);
+    showLED(LED_NONE); delay(100); // NTP error = fast PURPLE
     M5.update();
     if (M5.BtnA.wasPressed()){
       NTPadjust();
@@ -437,7 +452,7 @@ void loop()
       fOperation = false;
       //ESP_ERROR_CHECK(esp_wifi_stop());
       //ESP_ERROR_CHECK(esp_wifi_set_promiscuous(false));
-      leds[0] = CRGB(0, 0, 0); FastLED.show();
+			showLED(LED_NONE);
     }
     else{
       fOperation = true;
@@ -448,7 +463,7 @@ void loop()
     }
   }
   if (fOperation == true){
-    leds[0] = CRGB(0, 0, 40); FastLED.show(); // operating = Blue
+		showLED(LED_LOGGING); // operating = Blue
     delay(WIFI_CHANNEL_SWITCH_INTERVAL);
     wifi_sniffer_set_channel(channel);
     channel = (channel % WIFI_CHANNEL_MAX) + 1;
