@@ -34,6 +34,15 @@
 #define LED_LOGGING CRGB(0, 0, 80) // BLUE
 #define LED_RECEIVED CRGB(0, 80, 80) // CYAN
 #define LED_NONE CRGB(0, 0, 0) // BLACK
+/*
+// for debug
+#define LED_SDERROR CRGB(0, 0, 0) // RED
+#define LED_NTPERROR CRGB(0, 0, 0) // PURPLE
+#define LED_NTP CRGB(0, 0, 0) // GREEN
+#define LED_LOGGING CRGB(0, 0, 0) // BLUE
+#define LED_RECEIVED CRGB(0, 80, 80) // CYAN
+#define LED_NONE CRGB(0, 0, 0) // BLACK
+*/
 
 char ssid[64];
 char ssid_pwd[64];
@@ -67,7 +76,7 @@ void ShowAlert(CRGB c, uint16_t cycle)
 }
 
 
-#define DEBUG // serial out, no SD write
+//#define DEBUG // serial out, no SD write
 /*
 add followings to ~/.platformio/packages/framework-arduinoespressif32/variants/m5stack_stamp_s3/pins_arduino.h
 static const uint8_t SS = 7;
@@ -178,7 +187,7 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 #else
 	printf("!\n");
 #endif
-	showLED(LED_RECEIVED); // Packet received = Cyan
+//	showLED(LED_RECEIVED); // Packet received = Cyan : seems to cause hang-up?
 
 #ifdef DEBUG
   printf("%02d%02d%02d %02d%02d%02d ", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
@@ -189,7 +198,7 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 //  printf("log=%s\n", filename);
   logFile = SD.open(filename, "a");
   logFile.printf("%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
- #endif
+#endif
 
   // size of ManagementTaggedParameters = (ppkt->rx_ctrl.sig_len) - 28
   // payload: ID+LEN+(contents)
@@ -260,7 +269,6 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 #else
     logFile.printf("%02x", buf[i]);
 #endif
-
 #ifdef DEBUG
   printf(" | ");
 #else
@@ -279,7 +287,7 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   logFile.printf("\n");
   logFile.close();
 #endif
-  if (fOperation == true) showLED(LED_LOGGING); else showLED(LED_NONE);
+//  if (fOperation == true) showLED(LED_LOGGING); else showLED(LED_NONE);
 }
 
 void NTPadjust()
@@ -377,7 +385,6 @@ void setup()
   // SD on M5Unified
   // https://lang-ship.com/blog/work/m5stack-m5unified-sd/
   // https://qiita.com/MuAuan/items/5fd75695a3c9ad198b1c
-
 
   SPI.begin(14, 39, 12);
   fSD = SD.begin(11, SPI, 25000000);
