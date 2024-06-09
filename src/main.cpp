@@ -22,6 +22,8 @@
 
 // ESP32 WiFi Sniffer based on https://lang-ship.com/blog/work/esp32-wifi-sniffer/
 
+//#define DEBUG // serial out, no SD write
+
 // UI
 // 起動時BTN: NTP
 // 起動時: SDなし（赤高速点滅）／NTPエラー（紫高速点滅）→BTNでNTP（緑点滅）／wifi.txtなし（紫点滅）
@@ -76,7 +78,6 @@ void ShowAlert(CRGB c, uint16_t cycle)
 }
 
 
-//#define DEBUG // serial out, no SD write
 /*
 add followings to ~/.platformio/packages/framework-arduinoespressif32/variants/m5stack_stamp_s3/pins_arduino.h
 static const uint8_t SS = 7;
@@ -439,6 +440,9 @@ void setup()
   }
   delay(10);
   wifi_sniffer_init();
+
+  if (fOperation == true)	showLED(LED_LOGGING); else showLED(LED_NONE);
+
 }
 
 void loop()
