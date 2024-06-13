@@ -299,47 +299,57 @@ void NTPadjust()
 
   logFile = SD.open("/wifi.txt", "r");
 
-  uint8_t p = 0, tp = 0;
-  ssid_pwd2[0] = '\0';
-  while(logFile.available() && tp < 3) {
-    char c = (char)logFile.read();
-    if (c == 0x0d || c == 0x0a){
-      if (tp == 0) ssid[p] = '\0';
-      else if (tp == 1) ssid_pwd[p] = '\0';
-      else ssid_pwd2[p] = '\0';
-      tp++; p = 0;
-    }
-    if (c != 0x0d && c != 0x0a){
-      if (tp == 0) ssid[p++] = c;
-      else if (tp == 1) ssid_pwd[p++] = c;
-      else ssid_pwd2[p++] = c;
-    }
-  }
-//  printf("WiFi settings from wifi.txt: %s / %s / %s\n", ssid, ssid_pwd, ssid_pwd2);
+	uint8_t fin = 0;
 
-  WiFi.disconnect(true);  //disconnect form wifi to set new wifi connection
+	while(fin == 0){
+	  uint8_t p = 0, tp = 0;
+  	ssid_pwd2[0] = '\0';
+  	while(logFile.available() && tp < 3) {
+    	char c = (char)logFile.read();
+    	if (c == 0x0d || c == 0x0a){
+      	if (tp == 0) ssid[p] = '\0';
+      	else if (tp == 1) ssid_pwd[p] = '\0';
+      	else ssid_pwd2[p] = '\0';
+      	tp++; p = 0;
+    	}
+    	if (c != 0x0d && c != 0x0a){
+      	if (tp == 0) ssid[p++] = c;
+      	else if (tp == 1) ssid_pwd[p++] = c;
+      	else ssid_pwd2[p++] = c;
+    	}
+  	}
+	  printf("WiFi settings from wifi.txt: %s / %s / %s\n", ssid, ssid_pwd, ssid_pwd2);
+
+		WiFi.disconnect(true);  //disconnect form wifi to set new wifi connection
+	  WiFi.mode(WIFI_STA); //init wifi mode
+  	printf("Connecting to %s\n", ssid);
+  	if (strlen(ssid_pwd2) > 0) WiFi.begin(ssid, WPA2_AUTH_PEAP, "", ssid_pwd, ssid_pwd2);
+  	else WiFi.begin(ssid, ssid_pwd);
+  	WiFi.setSleep(false);
+	  WiFi.begin(ssid, ssid_pwd);
+  	uint8_t f = 0;
+#define N_TRIAL 60 // 30sec
+		uint8_t nTrial = 0;
+  	while (WiFi.status() != WL_CONNECTED && nTrial++ < N_TRIAL)
+  	{
+			M5.update();
+			if (M5.BtnA.wasPressed()){
+				// press BTN to skip WiFi connection
+				for (uint8_t i = 0; i < 5; i++){
+					showLED(LED_NTP); delay(100);
+					showLED(LED_NONE); delay(100);
+				}
+				break;
+			}
+    	delay(500);
+    	printf(".");
+    	if (f == 1) showLED(LED_NTP); else showLED(LED_NONE);
+    	f = 1 - f;
+  	}
+  	showLED(LED_NONE);
+		if (nTrial < N_TRIAL) fin = 1;
+	}
   logFile.close();
-
-  WiFi.mode(WIFI_STA); //init wifi mode
-  printf("Connecting to %s\n", ssid);
-  if (strlen(ssid_pwd2) > 0){
-    WiFi.begin(ssid, WPA2_AUTH_PEAP, "", ssid_pwd, ssid_pwd2);
-  }
-  else{
-    WiFi.begin(ssid, ssid_pwd);
-  }
-  WiFi.setSleep(false);
-
-  WiFi.begin(ssid, ssid_pwd);
-  uint8_t f = 0;
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    printf(".");
-    if (f == 1) showLED(LED_NTP); else showLED(LED_NONE);
-    f = 1 - f;
-  }
-  showLED(LED_NONE);
 
   printf("connected, IP=%s\n", WiFi.localIP().toString().c_str());
   configTzTime(NTP_TIMEZONE, "ntp.nict.jp");
