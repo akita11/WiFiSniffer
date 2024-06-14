@@ -296,7 +296,7 @@ void NTPadjust()
   // using NTP
   // https://knt60345blog.com/m5stack-ntp/
 
-  delay(3000);
+//  delay(3000);
 
   if (!SD.exists("/wifi.txt")) ShowAlert(LED_NTPERROR, 1000);
 
