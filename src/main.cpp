@@ -295,6 +295,9 @@ void NTPadjust()
 {
   // using NTP
   // https://knt60345blog.com/m5stack-ntp/
+
+  delay(3000);
+
   if (!SD.exists("/wifi.txt")) ShowAlert(LED_NTPERROR, 1000);
 
   logFile = SD.open("/wifi.txt", "r");
@@ -306,7 +309,7 @@ void NTPadjust()
   	ssid_pwd2[0] = '\0';
   	while(logFile.available() && tp < 3) {
     	char c = (char)logFile.read();
-    	if (c == 0x0d || c == 0x0a){
+    	if (p > 0 && (c == 0x0d || c == 0x0a)){
       	if (tp == 0) ssid[p] = '\0';
       	else if (tp == 1) ssid_pwd[p] = '\0';
       	else ssid_pwd2[p] = '\0';
@@ -318,17 +321,25 @@ void NTPadjust()
       	else ssid_pwd2[p++] = c;
     	}
   	}
-	  printf("WiFi settings from wifi.txt: %s / %s / %s\n", ssid, ssid_pwd, ssid_pwd2);
 
-		WiFi.disconnect(true);  //disconnect form wifi to set new wifi connection
+	  printf("WiFi settings from wifi.txt: [%s] / [%s] / [%s]\n", ssid, ssid_pwd, ssid_pwd2);
+
+//		WiFi.disconnect(true);  //disconnect form wifi to set new wifi connection
+		WiFi.disconnect();
+		delay(500);
 	  WiFi.mode(WIFI_STA); //init wifi mode
-  	printf("Connecting to %s\n", ssid);
-  	if (strlen(ssid_pwd2) > 0) WiFi.begin(ssid, WPA2_AUTH_PEAP, "", ssid_pwd, ssid_pwd2);
-  	else WiFi.begin(ssid, ssid_pwd);
+  	if (strlen(ssid_pwd2) > 1){
+    	printf("Connecting to %s / %s\n", ssid, ssid_pwd);
+      WiFi.begin(ssid, WPA2_AUTH_PEAP, "", ssid_pwd, ssid_pwd2);
+    }
+  	else{
+   	  printf("Connecting to %s\n", ssid);
+      WiFi.begin(ssid, ssid_pwd);
+    }
   	WiFi.setSleep(false);
-	  WiFi.begin(ssid, ssid_pwd);
   	uint8_t f = 0;
 #define N_TRIAL 60 // 30sec
+//#define N_TRIAL 10 // 5sec
 		uint8_t nTrial = 0;
   	while (WiFi.status() != WL_CONNECTED && nTrial++ < N_TRIAL)
   	{
@@ -339,7 +350,7 @@ void NTPadjust()
 					showLED(LED_NTP); delay(100);
 					showLED(LED_NONE); delay(100);
 				}
-				break;
+				nTrial = N_TRIAL;
 			}
     	delay(500);
     	printf(".");
