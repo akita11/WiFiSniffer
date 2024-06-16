@@ -262,7 +262,6 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
   logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
 #endif
-/*
   // skipped and raw data
   for (uint8_t i = 0; i < Nbuf; i++)
 #ifdef DEBUG
@@ -270,6 +269,7 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 #else
     logFile.printf("%02x", buf[i]);
 #endif
+/*
 #ifdef DEBUG
   printf(" | ");
 #else
