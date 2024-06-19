@@ -464,6 +464,9 @@ void setup()
 
   if (fOperation == true)	showLED(LED_LOGGING); else showLED(LED_NONE);
 
+  // https://qiita.com/Kurogara/items/afb092bf7fc7a060c0d8
+  WiFi.setTxPower(WIFI_POWER_MINUS_1dBm); // set TX power as minimum
+  
 }
 
 void loop()
