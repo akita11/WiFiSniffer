@@ -5,6 +5,12 @@
 #include <FastLED.h>
 
 // LEDの色定義
+
+// UI
+// 起動時BTN: NTP
+// 起動時: SDなし（赤高速点滅）／NTPエラー（紫高速点滅）→BTNでNTP（緑点滅）／wifi.txtなし（紫点滅）
+// 起動後：BTN=記録ON/OFF
+// 記録ON時：青点灯（データ受信時=水色点滅）
 #define LED_SDERROR CRGB(80, 0, 0)
 #define LED_NTPERROR CRGB(80, 0, 80)
 #define LED_NTP CRGB(0, 80, 0)
