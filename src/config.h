@@ -18,5 +18,9 @@
 #define PIN_LED 21    // 本体フルカラーLEDの使用端子（G21）
 #define NUM_LEDS 1    // 本体フルカラーLEDの数
 
+// Wi-Fi定義
+#define WIFI_CHANNEL_SWITCH_INTERVAL (500)
+#define WIFI_CHANNEL_MAX (14)
+
 
 #endif  // DEFINITIONS_H
