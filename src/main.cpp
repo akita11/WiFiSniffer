@@ -5,9 +5,10 @@
 #include "nvs_flash.h"
 #include "mbedtls/md.h"
 #include "SD.h"
-#include <FastLED.h>
 #include "time.h"
 #include <WiFi.h>
+
+#include "config.h"
 // Different versions of the framework have different SNTP header file names and availability.
 #if __has_include (<esp_sntp.h>)
  #include <esp_sntp.h>
@@ -30,22 +31,6 @@
 // 起動後：BTN=記録ON/OFF
 // 記録ON時：青点灯（データ受信時=水色点滅）
 
-#define LED_SDERROR CRGB(80, 0, 0) // RED
-#define LED_NTPERROR CRGB(80, 0, 80) // PURPLE
-#define LED_NTP CRGB(0, 80, 0) // GREEN
-#define LED_LOGGING CRGB(0, 0, 80) // BLUE
-#define LED_RECEIVED CRGB(0, 80, 80) // CYAN
-#define LED_NONE CRGB(0, 0, 0) // BLACK
-/*
-// for debug
-#define LED_SDERROR CRGB(0, 0, 0) // RED
-#define LED_NTPERROR CRGB(0, 0, 0) // PURPLE
-#define LED_NTP CRGB(0, 0, 0) // GREEN
-#define LED_LOGGING CRGB(0, 0, 0) // BLUE
-#define LED_RECEIVED CRGB(0, 80, 80) // CYAN
-#define LED_NONE CRGB(0, 0, 0) // BLACK
-*/
-
 char ssid[64];
 char ssid_pwd[64];
 char ssid_pwd2[64];
@@ -53,10 +38,6 @@ bool fOperation = true; // logging at boot
 //bool fOperation = false; // no logging at boot
 #define NTP_TIMEZONE  "JST-9"
 
-#define PIN_BUTTON 0  // 本体ボタンの使用端子（G0）
-#define PIN_OUTPUT 43 // 外部LED
-#define PIN_LED 21    // 本体フルカラーLEDの使用端子（G21）
-#define NUM_LEDS 1    // 本体フルカラーLEDの数
 
 CRGB leds[NUM_LEDS];
 File logFile;
@@ -77,40 +58,12 @@ void ShowAlert(CRGB c, uint16_t cycle)
   }    
 }
 
-
-/*
-add followings to ~/.platformio/packages/framework-arduinoespressif32/variants/m5stack_stamp_s3/pins_arduino.h
-static const uint8_t SS = 7;
-static const uint8_t MOSI = 6;
-static const uint8_t MISO = 5;
-static const uint8_t SCK = 4;
-*/
-
-#define WIFI_CHANNEL_SWITCH_INTERVAL (500)
-#define WIFI_CHANNEL_MAX (14)
-
 #define WLAN_FC_GET_STYPE(fc) (((fc)&0x00f0) >> 4)
 
 uint8_t level = 0, channel = 1;
 
 static wifi_country_t wifi_country = {.cc = "JP", .schan = 1, .nchan = 14}; // Most recent esp32 library struct
 
-typedef struct
-{
-  unsigned frame_ctrl : 16;
-  unsigned duration_id : 16;
-  uint8_t addr1[6];            /* receiver address */
-  uint8_t addr2[6];            /* sender address */
-  uint8_t addr3[6];            /* filtering address */
-  unsigned sequence_ctrl : 16; // 24byte
-  //  uint8_t addr4[6]; /* optional */       // 30byte, null for ProbeReq
-} wifi_ieee80211_mac_hdr_t;
-
-typedef struct
-{
-  wifi_ieee80211_mac_hdr_t hdr;
-  uint8_t payload[0]; /* network data ended with 4 bytes csum (CRC32) */
-} wifi_ieee80211_packet_t;
 
 static esp_err_t event_handler(void *ctx, system_event_t *event);
 static void wifi_sniffer_init(void);
