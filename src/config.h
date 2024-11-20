@@ -22,5 +22,19 @@
 #define WIFI_CHANNEL_SWITCH_INTERVAL (500)
 #define WIFI_CHANNEL_MAX (14)
 
+// 構造体定義
+typedef struct {
+    unsigned frame_ctrl : 16;
+    unsigned duration_id : 16;
+    uint8_t addr1[6];
+    uint8_t addr2[6];
+    uint8_t addr3[6];
+    unsigned sequence_ctrl : 16;
+} wifi_ieee80211_mac_hdr_t;
+
+typedef struct {
+    wifi_ieee80211_mac_hdr_t hdr;
+    uint8_t payload[0];
+} wifi_ieee80211_packet_t;
 
 #endif  // DEFINITIONS_H
