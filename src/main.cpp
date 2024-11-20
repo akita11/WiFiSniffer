@@ -25,11 +25,6 @@
 
 //#define DEBUG // serial out, no SD write
 
-// UI
-// 起動時BTN: NTP
-// 起動時: SDなし（赤高速点滅）／NTPエラー（紫高速点滅）→BTNでNTP（緑点滅）／wifi.txtなし（紫点滅）
-// 起動後：BTN=記録ON/OFF
-// 記録ON時：青点灯（データ受信時=水色点滅）
 
 char ssid[64];
 char ssid_pwd[64];
@@ -109,140 +104,91 @@ const char *wifi_sniffer_packet_type2str(wifi_promiscuous_pkt_type_t type)
   switch (type)
   {
   case WIFI_PKT_MGMT:
-    return "MGMT";
+    return "MGMT"; //管理フレーム
   case WIFI_PKT_DATA:
-    return "DATA";
+    return "DATA"; //データフレーム
   default:
   case WIFI_PKT_MISC:
-    return "MISC";
+    return "MISC"; //その他
   }
 }
 
-void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
-{
-  const wifi_promiscuous_pkt_t *ppkt = (wifi_promiscuous_pkt_t *)buff;
-  const wifi_ieee80211_packet_t *ipkt = (wifi_ieee80211_packet_t *)ppkt->payload;
-  const wifi_ieee80211_mac_hdr_t *hdr = &ipkt->hdr;
+void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type) {
+    // 受信したパケットデータを wifi_promiscuous_pkt_t 型にキャスト
+    const wifi_promiscuous_pkt_t *ppkt = (wifi_promiscuous_pkt_t *)buff;
+    
+    // ペイロード部分を参照（Wi-Fiフレームデータ全体）
+    const wifi_ieee80211_packet_t *ipkt = (wifi_ieee80211_packet_t *)ppkt->payload;
+    
+    // MACヘッダ部分を参照（送信元や受信先のアドレスを含む）
+    const wifi_ieee80211_mac_hdr_t *hdr = &ipkt->hdr;
 
-// wifi_promiscuous_pkt_t :
-// https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_wifi.html#structwifi__promiscuous__pkt__t
-
-  // skip non-ProbeReq
-  if (WLAN_FC_GET_STYPE(hdr->frame_ctrl) != 0x04)
-  { // WLAN_FC_STYPE_PROBE_REQ
-    return;
-  }
-  // IEE802.11 header is 24bytes in ProbeReq packet
-  // length of DATA is calculated from Frame size
-  // DATA follows IEEE802.11 header, buff[24]-
-
-  auto dt = M5.Rtc.getDateTime();
-#ifdef DEBUG
-#else
-	printf("!\n");
-#endif
-//	showLED(LED_RECEIVED); // Packet received = Cyan : seems to cause hang-up?
-
-#ifdef DEBUG
-  printf("%02d%02d%02d %02d%02d%02d ", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
-#else
-  char filename[64];
-  //  sprintf(filename, "/log%05d.csv", logNum);
-  sprintf(filename, "/%s_%05d.csv", logFileNamePrefix, logNum);
-//  printf("log=%s\n", filename);
-  logFile = SD.open(filename, "a");
-  logFile.printf("%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
-#endif
-
-  // size of ManagementTaggedParameters = (ppkt->rx_ctrl.sig_len) - 28
-  // payload: ID+LEN+(contents)
-  uint16_t N = ppkt->rx_ctrl.sig_len - 28;
-  uint16_t p = 0;
-  uint8_t buf[N];
-  uint16_t pb = 0;
-  uint16_t Nbuf;
-
-  while(p < N){
-    uint8_t id = ipkt->payload[p++];
-    uint8_t len = ipkt->payload[p++];
-    //    printf("[%02x:%02x]", id, len);
-    //    printf("id=%d len=%d(%d) : ", id, len, p);
-    // paramters to skip:
-    // - 0x00 : SSID
-    // - 0x03 : DS Parameter Set
-    // - 0xdd : Vendor Specific / OUI=0050f2(Microsoft)
-    if (id == 0xdd){
-      // VendorSpecfic
-      //      printf("(%02x:%02x:%02x)", ipkt->payload[p], ipkt->payload[p+1], ipkt->payload[p+2]);
-      if (ipkt->payload[p] == 0x00  && ipkt->payload[p+1] == 0x50 && ipkt->payload[p+2] == 0xf2)
-      ; //  skip OUI=Microsoft -> skip
-      else{
-        // use other OUI
-        buf[pb++] = id;
-        buf[pb++] = len;
-        for (uint8_t i = 0; i < len; i++) buf[pb++] = ipkt->payload[p + i];
-      }
+    // プローブリクエストフレーム（サブタイプ 0x04）以外は処理しない
+    if (WLAN_FC_GET_STYPE(hdr->frame_ctrl) != 0x04) {
+        return;
     }
-    else if (id == 0xff && len == 3)
-    ; // skip ExtTag's FLIS Request Parameters
-    else if (id != 0x00 && id != 0x03){
-      buf[pb++] = id;
-      buf[pb++] = len;
-      for (uint8_t i = 0; i < len; i++) buf[pb++] = ipkt->payload[p + i];
-    }
-    p += len;
-  }
-  Nbuf = pb;
 
-  byte shaResult[32];
-  mbedtls_md_context_t ctx;
-  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-  const size_t payloadLength = Nbuf;
-  mbedtls_md_init(&ctx);
-  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
-  mbedtls_md_starts(&ctx);
-  mbedtls_md_update(&ctx, buf, Nbuf);
-  mbedtls_md_finish(&ctx, shaResult);
-  mbedtls_md_free(&ctx);
-  for (uint8_t i = 0; i < 32; i++)
-#ifdef DEBUG
-  printf("%02x ", shaResult[i]);
-  printf("%02d ", ppkt->rx_ctrl.rssi);
-  // MAC address
-  printf("%02x:%02x:%02x:%02x:%02x:%02x ", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
-#else
-  logFile.printf("%02x", shaResult[i]);
-  logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
-  logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
-#endif
-  // skipped and raw data
-  for (uint8_t i = 0; i < Nbuf; i++)
-#ifdef DEBUG
-    printf("%02x", buf[i]);
-#else
-    logFile.printf("%02x", buf[i]);
-#endif
-/*
-#ifdef DEBUG
-  printf(" | ");
-#else
- logFile.printf(",");
-#endif
-  for (uint8_t i = 0; i < N; i++)
-#ifdef DEBUG
-    printf("%02x", ipkt->payload[i]);
-#else 
-    logFile.printf("%02x", ipkt->payload[i]);
-#endif
-*/
-#ifdef DEBUG
-  printf("\n");
-#else
-  logFile.printf("\n");
-  logFile.close();
-#endif
-//  if (fOperation == true) showLED(LED_LOGGING); else showLED(LED_NONE);
+    // 現在の日時を取得
+    auto dt = M5.Rtc.getDateTime();
+
+    // パケットペイロードの長さから不要な部分を除去（ヘッダー部分を除く）
+    uint16_t N = ppkt->rx_ctrl.sig_len - 28;  // 28バイトはMACヘッダーなどの固定部分
+    uint8_t buf[N];  // 処理対象のデータを格納するためのバッファ
+    uint16_t pb = 0;  // buf のインデックス
+
+    uint16_t p = 0;  // ペイロード全体のインデックス
+    while (p < N) {
+        uint8_t id = ipkt->payload[p++];  // 要素のIDを取得
+        uint8_t len = ipkt->payload[p++];  // 要素の長さを取得
+
+        // 不要なタグをスキップ
+        if (id == 0x00 || id == 0x03) {  // 例: SSID (0x00) や DS Parameter Set (0x03)
+            p += len;  // 長さ分だけスキップ
+        } else {
+            buf[pb++] = id;  // IDをバッファに格納
+            buf[pb++] = len;  // 長さをバッファに格納
+            for (uint8_t i = 0; i < len; i++) {
+                buf[pb++] = ipkt->payload[p + i];  // 実際のデータをバッファにコピー
+            }
+            p += len;  // 次のタグへ
+        }
+    }
+
+    // SHA-256ハッシュの計算
+    byte shaResult[32];
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
+    mbedtls_md_starts(&ctx);
+    mbedtls_md_update(&ctx, buf, pb);  // 処理済みデータをハッシュ化
+    mbedtls_md_finish(&ctx, shaResult);
+    mbedtls_md_free(&ctx);
+
+    // SDカードへログ記録
+    char filename[64];
+    sprintf(filename, "/log%05d.csv", logNum);
+    logFile = SD.open(filename, "a");
+    logFile.printf("%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
+
+    // ハッシュ結果の書き込み
+    for (uint8_t i = 0; i < 32; i++) {
+        logFile.printf("%02x", shaResult[i]);
+    }
+
+    // RSSI値と送信元MACアドレスを記録
+    logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
+    logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
+
+    // フィルタリング後のデータを記録
+    for (uint8_t i = 0; i < pb; i++) {
+        logFile.printf("%02x", buf[i]);
+    }
+
+    logFile.printf("\n");
+    logFile.close();
 }
+
 
 void NTPadjust()
 {
