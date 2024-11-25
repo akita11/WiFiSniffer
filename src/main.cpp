@@ -466,7 +466,9 @@ void setup()
 
   // https://qiita.com/Kurogara/items/afb092bf7fc7a060c0d8
   //  WiFi.setTxPower(WIFI_POWER_MINUS_1dBm); // set TX power as minimum / no effect in monitor mode (- 80mA)
-  
+
+  disableCore0WDT(); // diable Core0(PRO_CPU, for WiFi etc.)'s WDT
+
 }
 
 void loop()
