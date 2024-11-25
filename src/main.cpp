@@ -472,6 +472,7 @@ void setup()
 void loop()
 {
   M5.update();
+/*
   if (M5.BtnA.wasDoubleClicked()){
     if (fOperation == true){
       fOperation = false;
@@ -497,8 +498,9 @@ void loop()
       //ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
     }
   }
+*/
   if (fOperation == true){
-		showLED(LED_LOGGING); // operating = Blue
+//		showLED(LED_LOGGING); // operating = Blue
     delay(WIFI_CHANNEL_SWITCH_INTERVAL);
     wifi_sniffer_set_channel(channel);
     channel = (channel % WIFI_CHANNEL_MAX) + 1;
