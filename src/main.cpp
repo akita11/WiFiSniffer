@@ -503,4 +503,5 @@ void loop()
     wifi_sniffer_set_channel(channel);
     channel = (channel % WIFI_CHANNEL_MAX) + 1;
   }
+  delay(1);
 }
