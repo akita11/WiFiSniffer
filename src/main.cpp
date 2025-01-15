@@ -30,6 +30,11 @@
 // 起動後：BTN=記録ON/OFF
 // 記録ON時：青点灯（データ受信時=水色点滅）
 
+#define LINE_LENGTH 2048
+#define LINE_BUF_SIZE 96
+char line[LINE_BUF_SIZE][LINE_LENGTH];
+uint8_t pLineBuf_r = 0, pLineBuf_w = 0;
+
 #define LED_SDERROR CRGB(80, 0, 0) // RED
 #define LED_NTPERROR CRGB(80, 0, 80) // PURPLE
 #define LED_NTP CRGB(0, 80, 0) // GREEN
@@ -193,12 +198,12 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 #ifdef DEBUG
   printf("%02d%02d%02d %02d%02d%02d ", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
 #else
-  char filename[64];
-  //  sprintf(filename, "/log%05d.csv", logNum);
-  sprintf(filename, "/%s_%05d.csv", logFileNamePrefix, logNum);
+//  char filename[64];
+//  sprintf(filename, "/%s_%05d.csv", logFileNamePrefix, logNum);
 //  printf("log=%s\n", filename);
-  logFile = SD.open(filename, "a");
-  logFile.printf("%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
+//  logFile = SD.open(filename, "a");
+//  logFile.printf("%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
+	sprintf(line[pLineBuf_w], "%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
 #endif
 
   // size of ManagementTaggedParameters = (ppkt->rx_ctrl.sig_len) - 28
@@ -251,23 +256,34 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   mbedtls_md_update(&ctx, buf, Nbuf);
   mbedtls_md_finish(&ctx, shaResult);
   mbedtls_md_free(&ctx);
+	char bufTemp[64], bufTemp2[8];
+
   for (uint8_t i = 0; i < 32; i++)
 #ifdef DEBUG
-  printf("%02x ", shaResult[i]);
+	  printf("%02x ", shaResult[i]);
   printf("%02d ", ppkt->rx_ctrl.rssi);
   // MAC address
   printf("%02x:%02x:%02x:%02x:%02x:%02x ", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
 #else
-  logFile.printf("%02x", shaResult[i]);
-  logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
-  logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
+//  	logFile.printf("%02x", shaResult[i]);
+//  logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
+//  logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
+	{
+		sprintf(bufTemp, "%02x", shaResult[i]);
+		strcat(line[pLineBuf_w], bufTemp);
+	}
 #endif
   // skipped and raw data
+	if (Nbuf > 1000) Nbuf = 1000; // truncate to fit line buffersize
   for (uint8_t i = 0; i < Nbuf; i++)
 #ifdef DEBUG
     printf("%02x", buf[i]);
 #else
-    logFile.printf("%02x", buf[i]);
+//    logFile.printf("%02x", buf[i]);
+	{
+		sprintf(bufTemp, "%02x", buf[i]);
+		strcat(line[pLineBuf_w], bufTemp);
+	}
 #endif
 /*
 #ifdef DEBUG
@@ -285,8 +301,10 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 #ifdef DEBUG
   printf("\n");
 #else
-  logFile.printf("\n");
-  logFile.close();
+//  logFile.printf("\n");
+//  logFile.close();
+	strcat(line[pLineBuf_w], "\n");
+	pLineBuf_w = (pLineBuf_w + 1) % LINE_BUF_SIZE;
 #endif
 //  if (fOperation == true) showLED(LED_LOGGING); else showLED(LED_NONE);
 }
@@ -507,5 +525,17 @@ void loop()
     wifi_sniffer_set_channel(channel);
     channel = (channel % WIFI_CHANNEL_MAX) + 1;
   }
+
+	if(pLineBuf_r != pLineBuf_w){
+	  char filename[64];
+  	sprintf(filename, "/%s_%05d.csv", logFileNamePrefix, logNum);
+	  logFile = SD.open(filename, "a");
+		while(pLineBuf_r != pLineBuf_w){
+			logFile.print(line[pLineBuf_r]);
+			pLineBuf_r = (pLineBuf_r + 1) % LINE_BUF_SIZE;
+		}
+		logFile.close();
+	}
+
   delay(1);
 }
