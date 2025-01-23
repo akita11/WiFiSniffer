@@ -269,9 +269,11 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
 //  logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
 //  logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
 	{
-		sprintf(bufTemp, "%02x,%02d,%02x:%02x:%02x:%02x:%02x:%02x,", shaResult[i], ppkt->rx_ctrl.rssi, hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
+		sprintf(bufTemp, "%02x", shaResult[i]);
 		strcat(line[pLineBuf_w], bufTemp);
 	}
+  sprintf(bufTemp, ",%02d,%02x:%02x:%02x:%02x:%02x:%02x,", ppkt->rx_ctrl.rssi, hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
+	strcat(line[pLineBuf_w], bufTemp);
 #endif
   // skipped and raw data
 	if (Nbuf > 1000) Nbuf = 1000; // truncate to fit line buffersize
