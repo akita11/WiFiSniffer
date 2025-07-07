@@ -126,7 +126,7 @@ pio run --target upload --target monitor
 
 ## ライセンス
 
-[ライセンスを追加してください]
+MIT License
 
 ## 参考
 
