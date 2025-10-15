@@ -223,6 +223,8 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
     // - 0x00 : SSID
     // - 0x03 : DS Parameter Set
     // - 0xdd : Vendor Specific / OUI=0050f2(Microsoft)
+		// - 0x2d : ExtTag's FLIS Request Parameters (len=3)
+		// - 0x7f : Extended Capabilities (len=8 or 16)
     if (id == 0xdd){
       // VendorSpecfic
       //      printf("(%02x:%02x:%02x)", ipkt->payload[p], ipkt->payload[p+1], ipkt->payload[p+2]);
@@ -237,6 +239,8 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
     }
     else if (id == 0xff && len == 3)
     ; // skip ExtTag's FLIS Request Parameters
+		else if (id == 0x2d || id == 0x7f)
+		; // skip ExtTag's FLIS Request Parameters and Extended Capabilities
     else if (id != 0x00 && id != 0x03){
       buf[pb++] = id;
       buf[pb++] = len;
