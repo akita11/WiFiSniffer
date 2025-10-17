@@ -24,6 +24,8 @@
 
 //#define DEBUG // serial out, no SD write
 
+#define RAW_LOGGING // log raw data, no filtering
+
 // UI
 // 起動時BTN: NTP
 // 起動時: SDなし（赤高速点滅）／NTPエラー（紫高速点滅）→BTNでNTP（緑点滅）／wifi.txtなし（紫点滅）
@@ -219,13 +221,18 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
     uint8_t len = ipkt->payload[p++];
     //    printf("[%02x:%02x]", id, len);
     //    printf("id=%d len=%d(%d) : ", id, len, p);
+#ifdef RAW_LOGGING
+    buf[pb++] = id;
+    buf[pb++] = len;
+    for (uint8_t i = 0; i < len; i++) buf[pb++] = ipkt->payload[p + i];
+#else
     // paramters to skip:
     // - 0x00 : SSID
     // - 0x03 : DS Parameter Set
     // - 0xdd : Vendor Specific / OUI=0050f2(Microsoft)
 		// - 0x2d : ExtTag's FLIS Request Parameters (len=3)
 		// - 0x7f : Extended Capabilities (len=8 or 16)
-    if (id == 0xdd){
+		if (id == 0xdd){
       // VendorSpecfic
       //      printf("(%02x:%02x:%02x)", ipkt->payload[p], ipkt->payload[p+1], ipkt->payload[p+2]);
       if (ipkt->payload[p] == 0x00  && ipkt->payload[p+1] == 0x50 && ipkt->payload[p+2] == 0xf2)
@@ -246,11 +253,12 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
       buf[pb++] = len;
       for (uint8_t i = 0; i < len; i++) buf[pb++] = ipkt->payload[p + i];
     }
+#endif
     p += len;
   }
   Nbuf = pb;
 
-  byte shaResult[32];
+	byte shaResult[32];
   mbedtls_md_context_t ctx;
   mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
   const size_t payloadLength = Nbuf;
