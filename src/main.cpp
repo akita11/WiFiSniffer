@@ -427,9 +427,17 @@ void NTPadjust()
 
 void setup()
 {
+  setCpuFrequencyMhz(80);
+
   auto cfg = M5.config();
-  cfg.external_rtc = true; // user external RTC
+  cfg.external_rtc = true;
+  cfg.output_power = false;
   M5.begin(cfg);
+
+  M5.Imu.sleep();
+  M5.Mic.end();
+  M5.Speaker.end();
+
   Serial.begin(115200);
 
   FastLED.addLeds<WS2812B, PIN_LED, GRB>(leds, NUM_LEDS); // LED型式、使用端子、LED数を指定（定型文）
