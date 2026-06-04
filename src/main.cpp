@@ -32,9 +32,16 @@
 // 起動後：BTN=記録ON/OFF
 // 記録ON時：青点灯（データ受信時=水色点滅）
 
-#define LINE_LENGTH 2048
 #define LINE_BUF_SIZE 96
-char line[LINE_BUF_SIZE][LINE_LENGTH];
+struct PktEntry {
+  int8_t   rssi;
+  uint8_t  channel;
+  uint16_t seq;
+  uint8_t  mac[6];
+  uint16_t payload_len;
+  uint8_t  payload[960];
+};
+PktEntry pkt_ring[LINE_BUF_SIZE];
 uint8_t pLineBuf_r = 0, pLineBuf_w = 0;
 
 #define LED_SDERROR CRGB(80, 0, 0) // RED
@@ -93,7 +100,12 @@ static const uint8_t MISO = 5;
 static const uint8_t SCK = 4;
 */
 
+#define FAST_CHANNEL_HOP  // uncomment for 100ms
+#ifdef FAST_CHANNEL_HOP
+#define WIFI_CHANNEL_SWITCH_INTERVAL (100)
+#else
 #define WIFI_CHANNEL_SWITCH_INTERVAL (500)
+#endif
 #define WIFI_CHANNEL_MAX (14)
 
 #define WLAN_FC_GET_STYPE(fc) (((fc)&0x00f0) >> 4)
@@ -190,139 +202,63 @@ void wifi_sniffer_packet_handler(void *buff, wifi_promiscuous_pkt_type_t type)
   // length of DATA is calculated from Frame size
   // DATA follows IEEE802.11 header, buff[24]-
 
-  auto dt = M5.Rtc.getDateTime();
-#ifdef DEBUG
-#else
-	printf("!\n");
-#endif
-//	showLED(LED_RECEIVED); // Packet received = Cyan : seems to cause hang-up?
+  printf("!\n");
 
-#ifdef DEBUG
-  printf("%02d%02d%02d %02d%02d%02d ", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
-#else
-//  char filename[64];
-//  sprintf(filename, "/%s_%05d.csv", logFileNamePrefix, logNum);
-//  printf("log=%s\n", filename);
-//  logFile = SD.open(filename, "a");
-//  logFile.printf("%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
-	sprintf(line[pLineBuf_w], "%02d,%02d,%02d,%02d,%02d,%02d,", dt.date.year % 100, dt.date.month, dt.date.date, dt.time.hours, dt.time.minutes, dt.time.seconds);
-#endif
-
-  // size of ManagementTaggedParameters = (ppkt->rx_ctrl.sig_len) - 28
-  // payload: ID+LEN+(contents)
+  if (ppkt->rx_ctrl.sig_len < 28) {
+    printf("WARN: short sig_len=%u\n", ppkt->rx_ctrl.sig_len);
+    return;
+  }
   uint16_t N = ppkt->rx_ctrl.sig_len - 28;
+  if (N > 1500) {
+    printf("WARN: large N=%u (sig_len=%u)\n", N, ppkt->rx_ctrl.sig_len);
+    return;
+  }
   uint16_t p = 0;
-  uint8_t buf[N];
+  static uint8_t buf[1500];
   uint16_t pb = 0;
-  uint16_t Nbuf;
 
-  while(p < N){
+  while(p + 1 < N){
     uint8_t id = ipkt->payload[p++];
     uint8_t len = ipkt->payload[p++];
-    //    printf("[%02x:%02x]", id, len);
-    //    printf("id=%d len=%d(%d) : ", id, len, p);
+    if (p + len > N) {
+      printf("WARN: IE overrun id=%02x len=%u p=%u N=%u\n", id, len, p, N);
+      break;
+    }
 #ifdef RAW_LOGGING
+    if (pb + 2 + len > sizeof(buf)) break;
     buf[pb++] = id;
     buf[pb++] = len;
     for (uint8_t i = 0; i < len; i++) buf[pb++] = ipkt->payload[p + i];
 #else
-    // paramters to skip:
-    // - 0x00 : SSID
-    // - 0x03 : DS Parameter Set
-    // - 0xdd : Vendor Specific / OUI=0050f2(Microsoft)
-		// - 0x2d : ExtTag's FLIS Request Parameters (len=3)
-		// - 0x7f : Extended Capabilities (len=8 or 16)
-		if (id == 0xdd){
-      // VendorSpecfic
-      //      printf("(%02x:%02x:%02x)", ipkt->payload[p], ipkt->payload[p+1], ipkt->payload[p+2]);
-      if (ipkt->payload[p] == 0x00  && ipkt->payload[p+1] == 0x50 && ipkt->payload[p+2] == 0xf2)
-      ; //  skip OUI=Microsoft -> skip
-      else{
-        // use other OUI
-        buf[pb++] = id;
-        buf[pb++] = len;
+    if (id == 0xdd){
+      if (ipkt->payload[p] == 0x00 && ipkt->payload[p+1] == 0x50 && ipkt->payload[p+2] == 0xf2)
+      ; // skip OUI=Microsoft
+      else {
+        if (pb + 2 + len > sizeof(buf)) break;
+        buf[pb++] = id; buf[pb++] = len;
         for (uint8_t i = 0; i < len; i++) buf[pb++] = ipkt->payload[p + i];
       }
     }
-    else if (id == 0xff && len == 3)
-    ; // skip ExtTag's FLIS Request Parameters
-		else if (id == 0x2d || id == 0x7f)
-		; // skip ExtTag's FLIS Request Parameters and Extended Capabilities
-    else if (id != 0x00 && id != 0x03){
-      buf[pb++] = id;
-      buf[pb++] = len;
+    else if (id == 0xff && len == 3) ; // skip FLIS
+    else if (id == 0x2d || id == 0x7f) ; // skip HT / ExtCap
+    else if (id != 0x00 && id != 0x03) {
+      if (pb + 2 + len > sizeof(buf)) break;
+      buf[pb++] = id; buf[pb++] = len;
       for (uint8_t i = 0; i < len; i++) buf[pb++] = ipkt->payload[p + i];
     }
 #endif
     p += len;
   }
-  Nbuf = pb;
 
-	byte shaResult[32];
-  mbedtls_md_context_t ctx;
-  mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-  const size_t payloadLength = Nbuf;
-  mbedtls_md_init(&ctx);
-  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 0);
-  mbedtls_md_starts(&ctx);
-  mbedtls_md_update(&ctx, buf, Nbuf);
-  mbedtls_md_finish(&ctx, shaResult);
-  mbedtls_md_free(&ctx);
-	char bufTemp[64], bufTemp2[8];
-
-  for (uint8_t i = 0; i < 32; i++)
-#ifdef DEBUG
-	  printf("%02x ", shaResult[i]);
-  uint16_t seq_num = (hdr->sequence_ctrl >> 4) & 0x0FFF;
-  printf("%02d ", ppkt->rx_ctrl.rssi);
-  // MAC address
-  printf("%02x:%02x:%02x:%02x:%02x:%02x %04d ", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5], seq_num);
-#else
-//  	logFile.printf("%02x", shaResult[i]);
-//  logFile.printf(",%02d,", ppkt->rx_ctrl.rssi);
-//  logFile.printf("%02x:%02x:%02x:%02x:%02x:%02x,", hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]);
-	{
-		sprintf(bufTemp, "%02x", shaResult[i]);
-		strcat(line[pLineBuf_w], bufTemp);
-	}
-  uint16_t seq_num = (hdr->sequence_ctrl >> 4) & 0x0FFF;
-  sprintf(bufTemp, ",%02d,%02x:%02x:%02x:%02x:%02x:%02x,%04d,", ppkt->rx_ctrl.rssi, hdr->addr2[0], hdr->addr2[1], hdr->addr2[2], hdr->addr2[3], hdr->addr2[4], hdr->addr2[5], seq_num);
-	strcat(line[pLineBuf_w], bufTemp);
-#endif
-  // skipped and raw data
-	if (Nbuf > 1000) Nbuf = 1000; // truncate to fit line buffersize
-  for (uint8_t i = 0; i < Nbuf; i++)
-#ifdef DEBUG
-    printf("%02x", buf[i]);
-#else
-//    logFile.printf("%02x", buf[i]);
-	{
-		sprintf(bufTemp, "%02x", buf[i]);
-		strcat(line[pLineBuf_w], bufTemp);
-	}
-#endif
-/*
-#ifdef DEBUG
-  printf(" | ");
-#else
- logFile.printf(",");
-#endif
-  for (uint8_t i = 0; i < N; i++)
-#ifdef DEBUG
-    printf("%02x", ipkt->payload[i]);
-#else 
-    logFile.printf("%02x", ipkt->payload[i]);
-#endif
-*/
-#ifdef DEBUG
-  printf("\n");
-#else
-//  logFile.printf("\n");
-//  logFile.close();
-	strcat(line[pLineBuf_w], "\n");
-	pLineBuf_w = (pLineBuf_w + 1) % LINE_BUF_SIZE;
-#endif
-//  if (fOperation == true) showLED(LED_LOGGING); else showLED(LED_NONE);
+  // Store in ring buffer — SHA256/CSV/timestamp handled in main loop
+  PktEntry &e = pkt_ring[pLineBuf_w];
+  e.rssi    = ppkt->rx_ctrl.rssi;
+  e.channel = ppkt->rx_ctrl.channel;
+  e.seq     = (hdr->sequence_ctrl >> 4) & 0x0FFF;
+  memcpy(e.mac, hdr->addr2, 6);
+  e.payload_len = (pb > 960) ? 960 : pb;
+  memcpy(e.payload, buf, e.payload_len);
+  pLineBuf_w = (pLineBuf_w + 1) % LINE_BUF_SIZE;
 }
 
 void NTPadjust()
@@ -551,12 +487,40 @@ void loop()
   }
 
 	if(pLineBuf_r != pLineBuf_w){
+	  auto dt = M5.Rtc.getDateTime();
 	  char filename[64];
   	sprintf(filename, "/%s_%05d.csv", logFileNamePrefix, logNum);
 	  logFile = SD.open(filename, "a");
 		while(pLineBuf_r != pLineBuf_w){
-			logFile.print(line[pLineBuf_r]);
-			pLineBuf_r = (pLineBuf_r + 1) % LINE_BUF_SIZE;
+		  PktEntry &e = pkt_ring[pLineBuf_r];
+
+		  // SHA256 (runs in main loop — no WiFi driver interference)
+		  byte shaResult[32];
+		  mbedtls_md_context_t ctx;
+		  mbedtls_md_init(&ctx);
+		  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
+		  mbedtls_md_starts(&ctx);
+		  mbedtls_md_update(&ctx, e.payload, e.payload_len);
+		  mbedtls_md_finish(&ctx, shaResult);
+		  mbedtls_md_free(&ctx);
+
+		  // CSV format and write
+		  char tmpLine[2048];
+		  char tmp[8];
+		  sprintf(tmpLine, "%02d,%02d,%02d,%02d,%02d,%02d,",
+		          dt.date.year % 100, dt.date.month, dt.date.date,
+		          dt.time.hours, dt.time.minutes, dt.time.seconds);
+		  for (int i = 0; i < 32; i++) { sprintf(tmp, "%02x", shaResult[i]); strcat(tmpLine, tmp); }
+		  sprintf(tmp, ",%02d,", e.rssi); strcat(tmpLine, tmp);
+		  sprintf(tmp, "%02x:%02x:%02x:%02x:%02x:%02x,",
+		          e.mac[0], e.mac[1], e.mac[2], e.mac[3], e.mac[4], e.mac[5]);
+		  strcat(tmpLine, tmp);
+		  sprintf(tmp, "%02d,%04d,", e.channel, e.seq); strcat(tmpLine, tmp);
+		  for (int i = 0; i < e.payload_len; i++) { sprintf(tmp, "%02x", e.payload[i]); strcat(tmpLine, tmp); }
+		  strcat(tmpLine, "\n");
+		  logFile.print(tmpLine);
+
+		  pLineBuf_r = (pLineBuf_r + 1) % LINE_BUF_SIZE;
 		}
 		logFile.close();
 	}
