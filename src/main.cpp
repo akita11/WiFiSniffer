@@ -100,7 +100,7 @@ static const uint8_t MISO = 5;
 static const uint8_t SCK = 4;
 */
 
-#define FAST_CHANNEL_HOP  // uncomment for 100ms
+//#define FAST_CHANNEL_HOP  // uncomment for 100ms, more packet loss
 #ifdef FAST_CHANNEL_HOP
 #define WIFI_CHANNEL_SWITCH_INTERVAL (100)
 #else
