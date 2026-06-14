@@ -267,6 +267,7 @@ void NTPadjust()
   // https://knt60345blog.com/m5stack-ntp/
 
 //  delay(3000);
+	showLED(LED_NTP);
 
   if (!SD.exists("/wifi.txt")) ShowAlert(LED_NTPERROR, 1000);
 
@@ -357,6 +358,10 @@ void NTPadjust()
 
   WiFi.disconnect(true);
 //  WiFi.mode(WIFI_OFF);
+	for (uint8_t i = 0; i < 10; i++){
+		showLED(LED_NTP); delay(100);
+		showLED(LED_NONE); delay(100);
+  }
 
 	showLED(LED_NONE);
 }
